@@ -2,255 +2,405 @@
 
 # ⏱️ Alpha Infinite Stopwatch
 
-### Running since **28 October 2026, 04:00:00 AM Bangladesh Time**
+<!--STOPWATCH:START-->
+```
+   0 DAYS  00 HOURS  00 MINUTES  00 SECONDS
+```
+<sub>Starts 28 Oct 2026, 04:00 AM Bangladesh time. This block refreshes automatically every 5 minutes.</sub>
+<!--STOPWATCH:END-->
 
-## 👉 [**Open the Live Stopwatch**](https://alphastopwatch.github.io/AlphaStopwatch/) 👈
+### 👉 [Open the live stopwatch (updates every second)](https://alphastopwatch.github.io/AlphaStopwatch/)
 
-*Days · Hours · Minutes · Seconds, and it never stops.*
+**Days · Hours · Minutes · Seconds. It never stops. It never overflows. It never ends.**
 
 </div>
 
-> **Why a link and not a ticking clock right here?**
-> GitHub does not run JavaScript inside a README, so a README can never tick by itself. The real, live stopwatch is the page linked above (`index.html`, hosted free on GitHub Pages). This README explains everything about it.
-
 ---
 
-## Table of Contents
+## 📖 Table of Contents
 
 1. [What is this stopwatch?](#1-what-is-this-stopwatch)
-2. [Key guarantees](#2-key-guarantees)
+2. [The start moment](#2-the-start-moment)
 3. [How it works](#3-how-it-works)
-4. [Infrastructure](#4-infrastructure)
-5. [The code, explained](#5-the-code-explained)
-6. [How to use it](#6-how-to-use-it)
-7. [Possibilities and ideas](#7-possibilities-and-ideas)
-8. [Edge cases and how they are handled](#8-edge-cases-and-how-they-are-handled)
-9. [FAQ](#9-faq)
-10. [Honest limits](#10-honest-limits)
+4. [Why it is infinite](#4-why-it-is-infinite)
+5. [Why it never overflows](#5-why-it-never-overflows)
+6. [Infrastructure: how everything fits together](#6-infrastructure-how-everything-fits-together)
+7. [The code, explained piece by piece](#7-the-code-explained-piece-by-piece)
+8. [How to use this code yourself](#8-how-to-use-this-code-yourself)
+9. [Possibilities and ideas](#9-possibilities-and-ideas)
+10. [Frequently asked questions](#10-frequently-asked-questions)
+11. [Troubleshooting](#11-troubleshooting)
+12. [License](#12-license)
 
 ---
 
 ## 1. What is this stopwatch?
 
-This is a stopwatch that **counts upward from one fixed moment and never ends**.
+This is a stopwatch with one purpose: **count time forever**.
 
-- **Start moment:** 28 October 2026, 04:00:00 AM in Bangladesh (Bangladesh Standard Time, UTC+06:00).
-- **Units shown:** Days, Hours, Minutes, Seconds. Nothing else.
-- **Days are unlimited.** Hours, minutes and seconds roll over normally (seconds 0–59, minutes 0–59, hours 0–23), and every time hours roll past 23 the day counter goes up by one, forever.
+An ordinary stopwatch stops at 99:59:59 or 23:59:59, or resets, or has a "stop" button. This one has none of that. It shows exactly four things:
 
-A normal stopwatch resets, pauses, or breaks at some limit. This one has no buttons, no pause, no reset. It simply shows how much time has passed since the start moment.
+| Unit | Range shown | Behaviour |
+|------|-------------|-----------|
+| **Days** | 0 → ∞ | Grows without any limit |
+| **Hours** | 00 → 23 | Rolls into the next day |
+| **Minutes** | 00 → 59 | Rolls into the next hour |
+| **Seconds** | 00 → 59 | Rolls into the next minute |
 
-## 2. Key guarantees
+There are no months and no years. Everything above 24 hours is counted in **days**, and the day counter is the part that is infinite.
 
-| Guarantee | What it means |
-|---|---|
-| **Infinite days** | The day counter has no upper limit. It uses `BigInt`, so it stays exact for any number of days. |
-| **Never stops** | The display keeps updating continuously. If the tab is hidden and shown again, it re-syncs and jumps to the correct value. |
-| **No overflow** | The digits are automatically resized so the display always stays inside its box and the screen, however many digits the day count has. |
-| **Bangladesh official time** | On load, the stopwatch asks an online time server for the current time in `Asia/Dhaka`. It does **not** read the time from your device clock. |
-| **Same for everyone** | Every visitor syncs to the same official time, so everyone anywhere in the world sees the same numbers. |
-
-## 3. How it works
-
-The whole idea is one subtraction:
-
-```
-elapsed = (official Bangladesh time now) − (start moment)
-```
-
-Then the elapsed time is split into units:
-
-```
-total seconds = elapsed / 1000
-days    = total seconds ÷ 86400          (whole number, unlimited)
-hours   = remainder ÷ 3600               (0–23)
-minutes = (remainder % 3600) ÷ 60        (0–59)
-seconds = remainder % 60                 (0–59)
-```
-
-### Step by step
-
-1. **Page loads.** The stopwatch has no time yet, so it shows "Getting Bangladesh official time…".
-2. **Ask the time server.** It requests the current time for `Asia/Dhaka` from an online time API.
-3. **Fix the delay.** Network travel takes a moment, so half of the request's round-trip time is added to the answer. This makes the synced time more accurate.
-4. **Remember the anchor.** It stores two things: the official time it received, and the browser's internal monotonic timer value (`performance.now()`) at that same instant.
-5. **Tick.** Every frame, the current official time is calculated as `anchor time + (performance.now() − anchor timer)`. The monotonic timer only moves forward at a steady rate and **cannot be changed by the user changing their device clock**, so the device clock is never trusted.
-6. **Show the result.** Elapsed time is calculated, split into days/hours/minutes/seconds, and drawn on screen.
-7. **Re-sync.** Every 5 minutes, and whenever the tab becomes visible again, the stopwatch re-syncs with the official time to remove any drift.
-
-### Time zone note
-
-Bangladesh does not currently use daylight saving time, so Bangladesh Standard Time is UTC+06:00. The start moment `28 Oct 2026 04:00:00 BST` equals `27 Oct 2026 22:00:00 UTC`, and that is the constant stored in the code.
-
-## 4. Infrastructure
-
-Everything here is deliberately simple and free.
-
-```
-┌──────────────┐   1. request time (Asia/Dhaka)   ┌─────────────────────┐
-│  Visitor's   │ ───────────────────────────────▶ │ Online time server  │
-│  browser     │ ◀─────────────────────────────── │ (official time API) │
-│ (index.html) │   2. current Bangladesh time     └─────────────────────┘
-└──────┬───────┘
-       │ 3. anchor + monotonic timer → elapsed → days/hours/min/sec
-       ▼
-   Live display
-```
-
-- **Hosting:** GitHub Pages serves a single static file, `index.html`. No server, no database, no build step.
-- **Time sources:** two online sources are tried in order. If the first fails or times out (6 seconds), the second is tried.
-  1. `timeapi.io` (zone `Asia/Dhaka`)
-  2. `worldtimeapi.org` (zone `Asia/Dhaka`)
-- **No device time:** if **no** source can be reached when the page first loads, the stopwatch does **not** fall back to your device clock. It shows a message and keeps retrying every 5 seconds until it gets official time.
-- **After the first sync:** if a later re-sync fails, the stopwatch keeps running from the last good sync (using the monotonic timer) and retries every 30 seconds.
-- **Dependencies:** none. No libraries, no frameworks, no external fonts or images.
-
-## 5. The code, explained
-
-The whole project is one file: [`index.html`](./index.html). It has three parts: HTML (the four boxes), CSS (the look), and JavaScript (the logic).
-
-### The start moment
-
-```js
-// 28 Oct 2026 04:00:00 BST (UTC+6) = 27 Oct 2026 22:00:00 UTC
-var START_MS = Date.UTC(2026, 9, 27, 22, 0, 0);
-```
-
-JavaScript months start at 0, so `9` means October.
-
-### Getting official time
-
-```js
-var SOURCES = [
-  { url: "https://timeapi.io/api/Time/current/zone?timeZone=Asia/Dhaka", parse: ... },
-  { url: "https://worldtimeapi.org/api/timezone/Asia/Dhaka",             parse: ... }
-];
-```
-
-Each source has a URL and a small function that turns its answer into milliseconds. `sync()` tries them one by one.
-
-### The anchor and the monotonic clock
-
-```js
-anchorServerMs = serverMs + (t1 - t0) / 2;   // official time, corrected for network delay
-anchorPerf     = t1;                          // performance.now() at that moment
-
-function officialNow() {
-  return anchorServerMs + (performance.now() - anchorPerf);
-}
-```
-
-This is the heart of "not from the device". The device clock (`Date.now()`) is never used to decide the time.
-
-### Infinite days with BigInt
-
-```js
-var totalSec = BigInt(Math.floor(elapsed / 1000));
-var days = totalSec / 86400n;          // exact, unlimited size
-var rem  = Number(totalSec % 86400n);  // always 0–86399, safe as a normal number
-```
-
-`BigInt` has no fixed maximum size, which is what makes the day counter unbounded in code. Only the small remainder is converted back to a normal number for hours, minutes and seconds.
-
-### No overflow: auto-fit
-
-```js
-function fit() { ... }
-```
-
-Whenever the number of day-digits or the screen width changes, `fit()` recalculates the font size so all four boxes fit in one row. With 10 digits or 10,000 digits of days, nothing crosses the boundary.
-
-### The loop
-
-```js
-requestAnimationFrame(render);
-```
-
-The browser calls `render()` every frame. The numbers are recalculated from the anchor each time, so the display cannot drift or fall behind.
-
-## 6. How to use it
-
-### Option A: just view it
-
-Open the live link at the top of this page. Nothing to install.
-
-### Option B: host your own copy on GitHub Pages
-
-1. Open the repository on GitHub and make sure `index.html` is in the root folder.
-2. Go to **Settings → Pages**.
-3. Under **Build and deployment**, choose **Deploy from a branch**.
-4. Pick the `main` branch and the `/ (root)` folder, then press **Save**.
-5. Wait a minute or two. Your stopwatch will be live at:
-   `https://<your-username>.github.io/<repository-name>/`
-
-### Option C: run it on your own computer
-
-1. Download `index.html`.
-2. Double-click it to open in any modern browser. An internet connection is required, because the time comes online.
-
-### Option D: change the start moment
-
-Edit one line in `index.html`:
-
-```js
-var START_MS = Date.UTC(YEAR, MONTH_MINUS_1, DAY, HOUR_UTC, MINUTE, SECOND);
-```
-
-Convert your Bangladesh time to UTC first by **subtracting 6 hours**. Example: 9:30 AM Bangladesh time on 1 January 2027 is 3:30 AM UTC, so use `Date.UTC(2027, 0, 1, 3, 30, 0)`.
-
-### Browser support
-
-Any modern browser from the last several years (Chrome, Edge, Firefox, Safari, and their mobile versions). `BigInt` support is required.
-
-## 7. Possibilities and ideas
-
-The same approach can be used for many things:
-
-- **Anniversary and memorial counters:** days since a special moment, by changing one constant.
-- **Streak trackers:** how long since a habit or goal began.
-- **Project uptime:** how long a site or experiment has been running.
-- **Business milestones:** time since launch day.
-- **Shared public clocks:** every visitor syncs to the same official time, so a group sees exactly the same value at the same moment.
-- **Embeds:** the page can be embedded in other sites with an `<iframe>` pointing at the Pages link.
-- **Other time zones:** change `Asia/Dhaka` in the source URLs and adjust `START_MS` to count from another place's start moment.
-- **Different looks:** the counting logic and the styling are separate, so themes, fonts and layouts can change without touching the logic.
-
-## 8. Edge cases and how they are handled
-
-| Situation | What happens |
-|---|---|
-| Visitor opens the page **before** the start moment | Shows `0 days 00:00:00` until the start moment arrives, then counts. |
-| User changes their device clock | No effect. The device clock is not used. |
-| Tab is in the background for hours | On return, the stopwatch re-syncs and shows the correct value. |
-| Time server is slow | The request times out after 6 seconds, then the next source is tried. |
-| All time servers unreachable at first load | Shows a retry message. It does not guess from the device clock. |
-| Day count becomes very large | `BigInt` keeps it exact, and `fit()` shrinks the digits to stay inside the screen. |
-| Very small phone screens | The layout tightens and digits scale down automatically. |
-
-## 9. FAQ
-
-**Does it really never stop?**
-While the page is open, it keeps updating. Closing the page stops the *display*, not the count: when anyone opens it again, it shows the true elapsed time since the start moment.
-
-**Why not use the visitor's device time?**
-Device clocks can be wrong or changed on purpose. Official online time keeps every visitor's view identical and accurate.
-
-**How accurate is it?**
-Typically within a fraction of a second of official time. Accuracy depends on the time server and the visitor's network delay, and it is corrected every 5 minutes.
-
-**Why do hours, minutes and seconds have limits?**
-They follow normal clock rules and roll over. Only days are unlimited, by design.
-
-## 10. Honest limits
-
-- "Infinite" here means **no limit built into the code**. It counts for as long as browsers, GitHub Pages and the time servers exist. No program can literally run forever on its own.
-- The stopwatch depends on third-party online time services. If all of them are down when a visitor first opens the page, it waits and retries rather than showing a wrong time.
-- GitHub README files cannot run code, so the live ticking display is on the linked Pages site, not inside this file.
+There is no pause, no reset and no stop button. Once the start moment passes, it counts forward for as long as the web page is open, and it always shows the correct value when you come back.
 
 ---
 
+## 2. The start moment
+
+The stopwatch starts at:
+
+> **28 October 2026, 04:00:00 AM, Bangladesh Standard Time (UTC+06:00)**
+
+In code this is one fixed value:
+
+```js
+const START_MS = Date.parse("2026-10-28T04:00:00+06:00");
+```
+
+Two details matter here:
+
+- The `+06:00` is part of the value, so the start moment is the same for everyone in the world. Someone in London, New York or Tokyo sees the exact same numbers as someone in Dhaka.
+- Bangladesh does not use daylight saving time, so `+06:00` never changes.
+
+If someone opens the page **before** the start moment, the stopwatch shows `0 days 00:00:00` and a "waiting" message, then begins counting at 4:00 AM sharp.
+
+---
+
+## 3. How it works
+
+The key idea: **the stopwatch does not count. It calculates.**
+
+A naive stopwatch adds 1 to a variable every second. That goes wrong because browsers slow down background tabs, phones sleep, and every tiny delay adds up as drift. This stopwatch never adds anything. Every tick it does this:
+
+```
+elapsed time  =  current time  −  start moment
+```
+
+Then it converts the elapsed time into days, hours, minutes and seconds.
+
+### Step by step
+
+1. **Read the clock.** `Date.now()` gives the current time in milliseconds.
+2. **Subtract the start.** `Date.now() - START_MS` gives milliseconds elapsed.
+3. **Convert to whole seconds.** Divide by 1000 and round down.
+4. **Split into units.**
+   - `days = totalSeconds ÷ 86400` (whole number)
+   - `remainder = totalSeconds mod 86400`
+   - `hours = remainder ÷ 3600`
+   - `minutes = (remainder mod 3600) ÷ 60`
+   - `seconds = remainder mod 60`
+5. **Draw the numbers**, adding a leading zero so `7` shows as `07`.
+6. **Schedule the next tick** for the start of the next real second.
+
+### Worked example
+
+Suppose 200,000 seconds have passed since the start.
+
+- Days: 200,000 ÷ 86,400 = **2** (whole days)
+- Remainder: 200,000 − 2 × 86,400 = 27,200
+- Hours: 27,200 ÷ 3,600 = **7**
+- Minutes: (27,200 − 7 × 3,600) ÷ 60 = 2,000 ÷ 60 = **33**
+- Seconds: 2,000 − 33 × 60 = **20**
+
+Result: **2 days 07 hours 33 minutes 20 seconds.**
+
+### Why calculating beats counting
+
+| Situation | Counting every second | Calculating from the clock |
+|-----------|----------------------|----------------------------|
+| Tab in the background | Falls behind | Correct instantly on return |
+| Phone locked for hours | Wrong | Correct instantly on return |
+| Computer sleeps | Wrong | Correct instantly on return |
+| Page refreshed | Restarts from zero | Same correct value |
+| Slow device | Drifts | No drift |
+
+---
+
+## 4. Why it is infinite
+
+Two things could stop a stopwatch: running out of numbers, or running out of display. Both are handled.
+
+**Numbers.** Normal JavaScript numbers are precise only up to about 9 quadrillion (`9,007,199,254,740,991`). Past that, they silently lose accuracy. The stopwatch therefore keeps the **seconds and the days in `BigInt`**, a JavaScript type that has **no maximum size**. It can hold a number with a thousand digits, or a million, as long as memory exists.
+
+```js
+const totalSec = BigInt(Math.floor(elapsedMs / 1000));
+const days = totalSec / 86400n;
+```
+
+Hours, minutes and seconds are always small (at most 86,399 for the remainder of a day), so ordinary numbers are used for those, and that is safe forever.
+
+**Time itself.** The count comes from the clock, not from a stored value, so there is nothing to run out. As long as the device has a clock, the stopwatch has a value.
+
+> **An honest note:** nothing physical is truly infinite. The page needs a device and a browser to run on, and the browser's built-in date has its own technical upper limit in the far future (year 275,760). Long before any of that matters, nothing in this code limits the day counter. For every practical purpose, it never stops.
+
+---
+
+## 5. Why it never overflows
+
+"Overflow" has two meanings, and both are covered.
+
+### Number overflow
+
+Covered above: `BigInt` has no ceiling, and the small units are mathematically restricted to their ranges by the modulo operator (`%`):
+
+- seconds are always `0–59`
+- minutes are always `0–59`
+- hours are always `0–23`
+
+Seconds can never become 60, minutes can never become 60, and hours can never become 24. They roll over into the next unit automatically.
+
+### Display overflow
+
+When the day count gets more digits (999 → 1,000 → 1,000,000 → …), the text gets wider. A fixed-size layout would burst out of the screen. Instead, every time the number of digits changes, the code recalculates a font size so everything fits inside the screen width:
+
+```js
+function fit(daysText) {
+  const vw = Math.min(window.innerWidth, 1100);
+  const chars = daysText.length + 6;            // day digits + HH MM SS
+  const size = Math.max(14, Math.min(120, (vw * 0.9) / (chars * 0.62 + 3)));
+  // apply `size` to every number
+}
+```
+
+The layout also reacts to window resizing and phone rotation, and uses `min-width: 0` and `white-space: nowrap` so no part of the clock can push beyond its boundary or wrap onto a second line.
+
+---
+
+## 6. Infrastructure: how everything fits together
+
+The project has four moving parts:
+
+```
+AlphaStopwatch/
+├── index.html                       ← the live stopwatch (HTML + CSS + JS in one file)
+├── README.md                        ← this file
+├── update-readme.js                 ← small Node script that writes a snapshot into the README
+└── .github/workflows/
+    └── update-stopwatch.yml         ← GitHub Actions job that runs the script every 5 minutes
+```
+
+### Part 1: The live page (`index.html`)
+
+A single static file. No server, no database, no build step, no libraries. GitHub Pages serves it to the world for free. All the maths runs inside the visitor's own browser.
+
+### Part 2: The README snapshot (`update-readme.js` + the workflow)
+
+**Important limit:** GitHub README files cannot run JavaScript. GitHub strips scripts for safety, so a README cannot tick by itself. That is why there are two displays:
+
+| Display | Where | Updates | How |
+|---------|-------|---------|-----|
+| Snapshot | Top of this README | About every 5 minutes | A GitHub Actions job rewrites the block |
+| Live stopwatch | The GitHub Pages site | Every second | The browser calculates it |
+
+The Actions job:
+
+1. Wakes up on a 5-minute schedule (the fastest GitHub allows).
+2. Runs `update-readme.js`, which uses the same maths as the live page.
+3. Replaces everything between `<!--STOPWATCH:START-->` and `<!--STOPWATCH:END-->` in the README.
+4. Commits the change.
+
+GitHub sometimes delays scheduled jobs by a few minutes when it is busy, so treat the README block as "close to now", and the live page as exact.
+
+### Part 3: Time zone handling
+
+Both files use the same `2026-10-28T04:00:00+06:00` value, so they always agree with each other.
+
+---
+
+## 7. The code, explained piece by piece
+
+### The page structure
+
+```html
+<div id="clock">
+  <div class="unit days"><div class="num" id="d">0</div><div class="label">Days</div></div>
+  <div class="unit"><div class="num" id="h">00</div><div class="label">Hours</div></div>
+  <div class="unit"><div class="num" id="m">00</div><div class="label">Minutes</div></div>
+  <div class="unit"><div class="num" id="s">00</div><div class="label">Seconds</div></div>
+</div>
+```
+
+Four boxes, each with a number and a label. Days comes first and is allowed to grow.
+
+### The splitting function
+
+```js
+function split(elapsedMs) {
+  const totalSec = BigInt(Math.floor(elapsedMs / 1000));
+  const days = totalSec / 86400n;              // BigInt division: whole days
+  const rem = Number(totalSec % 86400n);       // 0..86399
+  return { days, h: Math.floor(rem / 3600), m: Math.floor((rem % 3600) / 60), s: rem % 60 };
+}
+```
+
+This is the heart of the project. The `n` after a number (`86400n`) marks it as a BigInt.
+
+### The tick loop
+
+```js
+function tick() {
+  const now = Date.now();
+  const elapsed = Math.max(0, now - START_MS);   // never negative
+  const t = split(elapsed);
+  // ...update the four numbers on screen...
+  setTimeout(tick, 1000 - (now % 1000) + 5);     // aim for the start of the next second
+}
+```
+
+Instead of `setInterval(…, 1000)`, which slowly drifts, each tick calculates exactly how long until the next real second begins.
+
+### Comma formatting
+
+```js
+t.days.toLocaleString("en-US")   // 1234567 → "1,234,567"
+```
+
+This makes huge day counts readable. It also works on BigInt.
+
+### Waking up properly
+
+```js
+document.addEventListener("visibilitychange", tick);
+```
+
+When you return to the tab, the stopwatch refreshes immediately instead of waiting for the next scheduled tick.
+
+---
+
+## 8. How to use this code yourself
+
+### Option A: Just view it
+
+Open **https://alphastopwatch.github.io/AlphaStopwatch/** in any browser, on any device.
+
+### Option B: Run it on your own computer
+
+1. Download or clone the repository:
+   ```bash
+   git clone https://github.com/AlphaStopwatch/AlphaStopwatch.git
+   cd AlphaStopwatch
+   ```
+2. Double-click `index.html`. It opens in your browser and works immediately. No installation needed.
+
+### Option C: Publish your own copy with GitHub Pages
+
+1. Create a new repository on GitHub.
+2. Upload `index.html` (and the other files if you want the README snapshot too).
+3. Open **Settings → Pages**.
+4. Under **Build and deployment**, choose **Deploy from a branch**, select **main** and **/ (root)**, then **Save**.
+5. After a minute, your site is live at `https://YOUR-NAME.github.io/YOUR-REPO/`.
+
+### Option D: Use your own start moment
+
+Edit one line in `index.html` **and** the same line in `update-readme.js`:
+
+```js
+const START_MS = Date.parse("2027-01-01T00:00:00+06:00");
+```
+
+Format: `YYYY-MM-DDTHH:MM:SS` followed by the UTC offset. Examples:
+
+| Place | Offset to write |
+|-------|-----------------|
+| Bangladesh | `+06:00` |
+| India | `+05:30` |
+| UTC | `Z` |
+| US Eastern (winter) | `-05:00` |
+
+### Option E: Turn on the README snapshot
+
+1. Make sure `README.md`, `update-readme.js` and `.github/workflows/update-stopwatch.yml` are in your repository.
+2. Open **Settings → Actions → General → Workflow permissions** and choose **Read and write permissions**, then **Save**.
+3. Open the **Actions** tab and run **Update stopwatch snapshot** once by hand with **Run workflow**. After that it runs by itself.
+
+### Showing it on your GitHub profile page
+
+GitHub shows a special README on your profile if you create a repository named exactly the same as your username (for example `AlphaStopwatch/AlphaStopwatch`) and put a `README.md` in it. This file is designed for exactly that.
+
+---
+
+## 9. Possibilities and ideas
+
+The same idea (calculate from a fixed start moment) can do much more:
+
+- **Anniversary counter:** days since a wedding, birthday or friendship.
+- **Memorial counter:** time lived by a loved one, counted forever.
+- **Project uptime:** how long a service has been running.
+- **Streak counter:** days since you started a habit, quit something, or launched a product.
+- **Countdown:** flip the subtraction (`target − now`) to count down to an event.
+- **World-clock stopwatch:** show the same stopwatch next to several cities.
+- **Milestone alerts:** celebrate day 100, day 365, day 1,000.
+- **Years and months view:** convert days into approximate years, months and days.
+- **Theme switcher:** dark, light, neon, minimal.
+- **Fullscreen mode:** a wall display for a TV or a spare tablet.
+- **Sound or notification** at every hour or every new day.
+- **Embed it** in another website with an `<iframe>`:
+  ```html
+  <iframe src="https://alphastopwatch.github.io/AlphaStopwatch/" width="100%" height="300" style="border:0"></iframe>
+  ```
+- **Multiple stopwatches** with different start moments on one page.
+- **Share cards:** generate an image of today's value to post on social media.
+
+---
+
+## 10. Frequently asked questions
+
+**Does it really never stop?**
+Nothing in the code can stop it. It has no end condition, no limit on days, and no stop button. It needs a device with a working clock and a browser, like any website.
+
+**What happens if I close the page and open it tomorrow?**
+It shows the correct elapsed time instantly, because it calculates from the clock rather than remembering a count.
+
+**What if my device's clock is wrong?**
+The stopwatch trusts the device clock. If the clock is set incorrectly, the stopwatch will be off by the same amount. Turn on automatic date and time in your device settings.
+
+**Is there a reset button?**
+No, by design.
+
+**Why are there no months or years?**
+Months and years have unequal lengths, which would make the count inconsistent. Days are always exactly 24 hours, so counting in days is exact.
+
+**Why is the README number not exactly the live number?**
+The README can only be rewritten by a scheduled job, about every 5 minutes. The live page is exact to the second.
+
+**Does it work offline?**
+Yes, once the page is loaded. The page needs no internet to keep calculating.
+
+**Does it collect any data?**
+No. There are no cookies, no tracking, no network requests and no external libraries.
+
+**Which browsers work?**
+Any modern browser (Chrome, Edge, Firefox, Safari, and mobile browsers). `BigInt` is supported by all of them.
+
+---
+
+## 11. Troubleshooting
+
+| Problem | Likely cause | Fix |
+|---------|--------------|-----|
+| Page shows `0 00 00 00` | Start moment has not arrived yet | Wait until 4:00 AM Bangladesh time, or check the `START_MS` date |
+| Numbers look wrong | Device clock or time zone is off | Enable automatic date and time |
+| GitHub Pages link gives a 404 | Pages not enabled yet, or the file is not named `index.html` | Enable Pages and check the file name (case-sensitive) |
+| README block never changes | Workflow not enabled or lacks permission | Follow [Option E](#option-e-turn-on-the-readme-snapshot) |
+| Workflow fails with a permission error | Write access missing | Set **Read and write permissions** in Settings → Actions → General |
+| Numbers shrink very small | Day count has a very large number of digits | Expected; the font scales down to keep everything inside the screen |
+
+---
+
+## 12. License
+
+Free to use, copy and modify. Add a `LICENSE` file (for example MIT) if you want to state this formally.
+
 <div align="center">
 
-**Alpha Infinite Stopwatch** · Counting since 28 October 2026, 04:00 AM Bangladesh Time
+**⏱️ Alpha Infinite Stopwatch. Time never stops, and neither does this.**
 
 </div>
